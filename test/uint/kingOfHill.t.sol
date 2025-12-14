@@ -10,6 +10,8 @@ contract KingofHillTest is Test {
     address owner = address(1);
     address player1 = address(2);
     address player2 = address(3);
+    address player3 = address(4);
+    address player4 = address(5);
 
     // Events (copied from contract to test)
     event ThroneClaimed(
@@ -23,6 +25,8 @@ contract KingofHillTest is Test {
         vm.deal(owner, 10 ether);
         vm.deal(player1, 10 ether);
         vm.deal(player2, 10 ether);
+        vm.deal(player3, 10 ether);
+        vm.deal(player4, 10 ether);
 
         // Deploy the game contract as owner
         vm.startPrank(owner);
@@ -404,5 +408,110 @@ function testClaimThrone_FirstClaimWithNoKing() public {
     uint256 expectedNewReward = (2 ether * 10) / 100;
     assertEq(game.rewards(owner), ownerRewardBefore + expectedNewReward);
 }
+
+    function testGetRewardRecipients_ReturnsAllRecipients() public {
+        // ARRANGE: Create a scenario with multiple reward recipients
+        // When player1 claims, owner (the deployer) gets dethroned and receives a reward
+        vm.prank(player1);
+        game.claimThrone{value: 2 ether}();
+        // Recipients: [owner]
+
+        // When player2 claims, player1 gets dethroned and receives a reward
+        vm.prank(player2);
+        game.claimThrone{value: 3 ether}();
+        // Recipients: [owner, player1]
+
+        // When player3 claims, player2 gets dethroned and receives a reward
+        vm.prank(player3);
+        game.claimThrone{value: 4 ether}();
+        // Recipients: [owner, player1, player2]
+
+        // When player4 claims, player3 gets dethroned and receives a reward
+        vm.prank(player4);
+        game.claimThrone{value: 5 ether}();
+        // Recipients: [owner, player1, player2, player3]
+        // Note: player4 is still king, so they have NO reward yet
+
+        // ACT: Get the list of reward recipients from the contract
+        address[] memory recipients = game.getRewardRecipients();
+
+        // ASSERT: Verify the array contains all expected addresses
+        // Should have 4 recipients (everyone except player4 who is still king)
+        assertEq(recipients.length, 4, "Should have 4 reward recipients");
+        
+        // Check each address is in the array in the order they were added
+        assertEq(recipients[0], owner, "First recipient should be owner");
+        assertEq(recipients[1], player1, "Second recipient should be player1");
+        assertEq(recipients[2], player2, "Third recipient should be player2");
+        assertEq(recipients[3], player3, "Fourth recipient should be player3");
+    }
+
+    function testGetRewardRecipientsCount_IncreasesWithNewRewards() public {
+        assertEq(game.getRewardRecipientsCount(), 0, "Initial count should be 0");
+        // player1 claims the throne, owner gets dethroned and should receive a reward
+        vm.prank(player1);
+        game.claimThrone{value: 2 ether}();
+
+        // check count increased 
+        assertEq(game.getRewardRecipientsCount(), 1, "Count should be 1 after first dethronement");
+
+        // player2 claims the throne, player1 gets dethroned and should receive a reward
+        vm.prank(player2);
+        game.claimThrone{value: 3 ether}(); 
+
+        // check count increased
+        assertEq(game.getRewardRecipientsCount(), 2, "Count should be 2 after second dethronement");
+
+        // player3 claims the throne, player2 gets dethroned and should receive a reward
+        vm.prank(player3);
+        game.claimThrone{value: 4 ether}(); 
+        // check count increased
+        assertEq(game.getRewardRecipientsCount(), 3, "Count should be 3 after third dethronement");
+
+        // player4 claims the throne, player3 gets dethroned and should receive a reward
+        vm.prank(player4);
+        game.claimThrone{value: 5 ether}(); 
+        // check count increased    
+        assertEq(game.getRewardRecipientsCount(), 4, "Count should be 4 after fourth dethronement");        
+
+         // Player1 claims their reward
+        vm.prank(player1);
+        game.claimReward();
+        
+        // Count should STILL be 4 (as player1 is still in the array)
+        assertEq(game.getRewardRecipientsCount(), 4, "Count should remain 4 after player1 claims reward");
+        
+        // Verify player1 no longer has a reward, but is still in the array
+        assertEq(game.rewards(player1), 0, "Player1 should have no reward after claiming");
+        
+        // The array should still contain player1
+        address[] memory recipients = game.getRewardRecipients();
+        assertEq(recipients[1], player1, "Player1 should still be in recipients array");
+    }
+    
+
+    function testClaimReward_ExpiredRewardWhenOwnerAlreadyHasReward() public {
+        // create scenario where player1 has a reward
+        vm.prank(player1);
+        game.claimThrone{value: 2 ether}();
+        vm.prank(player2);
+        game.claimThrone{value: 3 ether}(); // Now player1 has a reward
+
+        // Fast forward past the reward deadline (48 hours)
+        vm.warp(block.timestamp + 49 hours);
+        // Record balances before claim
+        uint256 player1BalanceBefore = player1.balance;
+        uint256 ownerRewardsBefore = game.rewards(owner);
+        uint256 expectedReward = (3 ether * 10) / 100; // 0.3 ether 
+        // player1 claims expired reward
+        vm.prank(player1);
+        game.claimReward();
+        // Assert: Player didn't receive reward, it was added to owner's claimable rewards
+        assertEq(player1.balance, player1BalanceBefore, "Player1 balance should be unchanged");
+        assertEq(game.rewards(player1), 0, "Player1's reward should be cleared");
+        assertEq(game.rewards(owner), ownerRewardsBefore + expectedReward, "Owner should receive expired reward");  
+        // Verify owner wasn't added to array twice
+        assertEq(game.getRewardRecipientsCount(), 2, "Should still have 2 recipients (no duplicate owner)");
+    }
 }
 

@@ -1,4 +1,4 @@
-# King of the Hill 👑
+# King of the Hill 👑🏔️
 
 A competitive on-chain game where players battle to become king by paying more ETH than the previous king. Last king standing wins the prize pool! Built with Solidity and Foundry as part of smart contract development practice.
 
@@ -20,11 +20,11 @@ A competitive on-chain game where players battle to become king by paying more E
 
 ## 📊 Test Coverage
 
-- **95% Line Coverage**
-- **95% Statement Coverage**
-- **86% Branch Coverage**
+- **94% Line Coverage**
+- **94% Statement Coverage**
+- **88% Branch Coverage**
 - **100% Function Coverage**
-- **36 Comprehensive Tests** (Unit, Fuzz, and Invariant)
+- **39 Comprehensive Tests** (Unit, Fuzz, and Invariant)
 
 ## 🚀 Quick Start
 

@@ -98,6 +98,10 @@ contract KingofHill is ReentrancyGuard {
     // Mappings
     mapping(address => uint256) public rewards;
     mapping(address => uint256) public rewardDeadlines;
+    
+    // Array to track all addresses with rewards
+    address[] private rewardRecipients;
+    mapping(address => bool) private hasReward; // Track if address is already in array
 
     /**
      * @notice Creates a new King of Hill game
@@ -157,13 +161,21 @@ contract KingofHill is ReentrancyGuard {
         uint256 reward = (msg.value * REWARD_PERCENTAGE) / 100;
         
         // Give reward to the king being dethroned
+        address rewardRecipient;
         if (currentKing != address(0)) {
-            rewards[currentKing] += reward;
-            rewardDeadlines[currentKing] = block.timestamp + REWARD_DEADLINE;
+            rewardRecipient = currentKing;
         } else {
             // First ever claim, no king to reward
-            rewards[i_gameOwner] += reward;
-            rewardDeadlines[i_gameOwner] = block.timestamp + REWARD_DEADLINE;
+            rewardRecipient = i_gameOwner;
+        }
+        
+        rewards[rewardRecipient] += reward;
+        rewardDeadlines[rewardRecipient] = block.timestamp + REWARD_DEADLINE;
+        
+        // Add to tracking array if not already tracked
+        if (!hasReward[rewardRecipient]) {
+            rewardRecipients.push(rewardRecipient);
+            hasReward[rewardRecipient] = true;
         }
 
         // Update state variables
@@ -208,20 +220,23 @@ contract KingofHill is ReentrancyGuard {
         }
 
         if (block.timestamp > rewardDeadlines[msg.sender]) {
-            // Too late - transfer the expired reward to game owner
+            // Too late - add the expired reward to game owner's claimable rewards
             rewards[msg.sender] = 0;
+            hasReward[msg.sender] = false; // Remove from tracking
             rewards[i_gameOwner] += reward;
+            rewardDeadlines[i_gameOwner] = block.timestamp + REWARD_DEADLINE;
             
-            // Actually transfer the ETH to owner
-            (bool sent, ) = i_gameOwner.call{value: reward}("");
-            if (!sent) {
-                revert ExpiredRewardTransferFailed();
+            // Add owner to tracking if not already there
+            if (!hasReward[i_gameOwner]) {
+                rewardRecipients.push(i_gameOwner);
+                hasReward[i_gameOwner] = true;
             }
             
             emit RewardExpired(msg.sender, reward, i_gameOwner);
         } else {
             // On time - pay out to player
             rewards[msg.sender] = 0;
+            hasReward[msg.sender] = false; // Remove from tracking
             (bool sent, ) = msg.sender.call{value: reward}("");
             if (!sent) {
                 revert RewardTransferFailed();
@@ -301,13 +316,34 @@ contract KingofHill is ReentrancyGuard {
     /**
      * @notice Helper function to calculate total unclaimed rewards
      * @dev Internal function used by claimWinningsAsKing
+     * @dev Loops through all reward recipients to sum their unclaimed rewards
      * @return total Sum of all unclaimed rewards across all players
      */
     function _getTotalUnclaimedRewards() internal view returns (uint256 total) {
-        // Note: In a production contract, you'd want to track all reward recipients
-        // For this simple version, we check known addresses
-        // This is a simplified implementation - in production you'd use an array of reward recipients
-        total = rewards[currentKing] + rewards[i_gameOwner];
+        for (uint256 i = 0; i < rewardRecipients.length; i++) {
+            address recipient = rewardRecipients[i];
+            // Only count rewards that haven't been claimed yet
+            if (hasReward[recipient]) {
+                total += rewards[recipient];
+            }
+        }
+        return total;
+    }
+    
+    /**
+     * @notice Get the list of all reward recipients (for transparency/debugging)
+     * @return Array of addresses that have or had rewards
+     */
+    function getRewardRecipients() external view returns (address[] memory) {
+        return rewardRecipients;
+    }
+    
+    /**
+     * @notice Get count of addresses being tracked for rewards
+     * @return Number of addresses in the tracking array
+     */
+    function getRewardRecipientsCount() external view returns (uint256) {
+        return rewardRecipients.length;
     }
 }
 

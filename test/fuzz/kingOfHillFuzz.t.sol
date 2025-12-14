@@ -93,15 +93,20 @@ contract KingofHillFuzz is Test {
         
         // ACT: Claim expired reward
         uint256 player1BalanceBefore = player1.balance;
-        uint256 ownerBalanceBefore = address(this).balance;
+        uint256 ownerRewardsBefore = game.rewards(address(this));
         uint256 expectedReward = (3 ether * 10) / 100; // 0.3 ether
         
         vm.prank(player1);
         game.claimReward();
         
-        // ASSERT: Player didn't receive reward, owner did
+        // ASSERT: Player didn't receive reward, it was added to owner's claimable rewards
         assertEq(player1.balance, player1BalanceBefore); // Player balance unchanged
-        assertEq(address(this).balance, ownerBalanceBefore + expectedReward); // Owner received reward
+        assertEq(game.rewards(player1), 0); // Player's reward cleared
+        
+        // Owner's rewards should increase by the expired reward amount
+        // Note: Owner also got 10% of player1's initial 2 ether claim (0.2 ether)
+        uint256 initialOwnerReward = (2 ether * 10) / 100; // 0.2 ether
+        assertEq(game.rewards(address(this)), initialOwnerReward + expectedReward); // Owner's rewards increased
     }
 
     function testFuzz_ClaimWinningsAsKing(uint256 timeAfterGameEnd) public {
